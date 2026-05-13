@@ -5,3 +5,9 @@
 @Author : yange19940310@gmail.com
 @File   : __init__.py.py
 """
+
+from .config import Config
+
+__all__ =[
+    "Config"
+]

@@ -1,16 +1,38 @@
-# 这是一个示例 Python 脚本。
+import os
+from typing import Iterator, AsyncIterator
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+from langchain_core.runnables import RunnableGenerator, RunnableLambda
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
-# 按 Shift+F10 执行或将其替换为您的代码。
-# 按 双击 Shift 在所有地方搜索类、文件、工具窗口、操作和设置。
+load_dotenv()
 
+llm = init_chat_model(
+    model="qwen3.6-plus",
+    model_provider="openai",
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
+    base_url=os.getenv("DASHSCOPE_BASE_URL"),
+)
 
-def print_hi(name):
-    # 在下面的代码行中使用断点来调试脚本。
-    print(f'Hi, {name}')  # 按 Ctrl+F8 切换断点。
+def add_emoji_generator(input_stream: Iterator[str]) -> Iterator[str]:
+    for token in input_stream:
+        if "。" in token or "!" in token:
+            yield token + "😊"
+        else:
+            yield token
 
+emoji_runnable = RunnableGenerator(add_emoji_generator)
 
-# 按装订区域中的绿色按钮以运行脚本。
-if __name__ == '__main__':
-    print_hi('PyCharm')
+async def async_capitalize(input_stream: AsyncIterator[str]) -> AsyncIterator[str]:
+    async for token in input_stream:
+        yield token.upper()
 
-# 访问 https://www.jetbrains.com/help/pycharm/ 获取 PyCharm 帮助
+async_runnable = RunnableGenerator(async_capitalize)
+
+prompt = ChatPromptTemplate.from_template("讲一个关于{topic}的短笑话")
+chain = prompt | llm | StrOutputParser() | emoji_runnable
+
+print("流式输出（带表情符号）：")
+for chunk in chain.stream({"topic": "程序员"}):
+    print(chunk, end="", flush=True)

@@ -23,7 +23,8 @@ class Response:
 
 def json(data: Response = None):
     """基础的响应接口"""
-    return jsonify(data), 200
+    response = jsonify(data)
+    return response, 200
 
 
 def success_json(data: Any = None):

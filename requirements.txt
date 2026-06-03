@@ -11,3 +11,7 @@ openai==2.38.0
 pydantic==2.13.4
 python-dotenv==1.2.2
 WTForms==3.2.2
+
+langchain-community
+langchain-classic
+langchain-huggingface

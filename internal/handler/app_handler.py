@@ -8,21 +8,17 @@
 
 import os
 import uuid
-from asyncio import log
 from dataclasses import dataclass
-from datetime import datetime
+
 from injector import inject
-from openai import OpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
-from langchain_core.output_parsers import JsonOutputParser
-
-
+from langchain_core.output_parsers import StrOutputParser
 
 from langchain.chat_models import init_chat_model
+from internal.exception import NotFoundException
 from internal.schema.app_schema import CompletionReq
-from internal.service import AppService
-from pkg.response import success_json, validate_error_json, success_message
+from internal.service import AppService, AppDebugMemoryService
+from pkg.response import success_json, validate_error_json
 
 
 @inject
@@ -30,32 +26,19 @@ from pkg.response import success_json, validate_error_json, success_message
 class AppHandler:
     """应用控制器"""
     app_service: AppService
-    def debug(self, appid: uuid.UUID):
-        print('appid',appid)
-        class Joke(BaseModel):
-            joke:str= Field(description="回答用户的笑话")
-            punchline: str= Field(description="这个笑话的笑点")
+    app_debug_memory_service: AppDebugMemoryService
 
+    def debug(self, appid: uuid.UUID):
         """聊天接口"""
         # 1.提取从接口中获取的输入，POST
         req = CompletionReq()
         if not req.validate():
             return validate_error_json(req.errors)
-        # 2.构建OpenAI客户端，并发起请求
-        parser = JsonOutputParser(pydantic_object=Joke)
+        # app = self.app_service.get_app(appid)
+        # if app is None:
+        #     raise NotFoundException("应用不存在")
 
-        # 获取格式化指令，告诉model如何输出符合要求的JSON格式
-        format_instructions = parser.get_format_instructions()
-
-        chat_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system",
-                 "你是一个收藏了很多笑话的笑话大师，你的名字是笑话大王，请用幽默的方式回答用户的问题。"),
-                ("human", "{query}。{format_instructions}")
-            ]
-        )
-        prompt = chat_prompt.partial(format_instructions=format_instructions)
-
+        parser = StrOutputParser()
         llm = init_chat_model(
             model="qwen3.6-plus",
             model_provider="openai",
@@ -64,9 +47,12 @@ class AppHandler:
         )
 
 
-        # 3.得到请求响应，然后将OpenAI的响应传递给前端
-        completion = prompt | llm | parser
+        memory_state = self.app_debug_memory_service.load(appid)
+        chat_prompt = ChatPromptTemplate.from_messages(
+            self.app_debug_memory_service.build_prompt_messages(memory_state, req.query.data)
+        )
+        completion = chat_prompt | llm | parser
 
-        content = completion.invoke(req.query.data)
-
+        content = completion.invoke({})
+        self.app_debug_memory_service.append_and_compact(appid, req.query.data, content, llm)
         return success_json({"content": content})

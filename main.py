@@ -1,111 +1,66 @@
-import os
-from dotenv import load_dotenv
+import dotenv
+import numpy as np
+from langchain_classic.embeddings import CacheBackedEmbeddings
+from langchain_classic.storage import LocalFileStore
+from langchain_huggingface import HuggingFaceEmbeddings
 
-# 初始化 Chat Model（LangChain 新版统一入口）
-from langchain.chat_models import init_chat_model
+# 加载 .env 文件中的环境变量。
+# 如果你在 .env 中配置了 HF_TOKEN，这里加载后，Hugging Face 相关库就可以直接使用。
+dotenv.load_dotenv()
 
-# 用于“运行时可配置分支”的核心工具
-from langchain_core.runnables import ConfigurableField
-from langchain_core.runnables.configurable import RunnableConfigurableAlternatives
-# 输出解析器：把模型输出统一转成字符串
-from langchain_core.output_parsers import StrOutputParser
+# 指定要使用的中文向量模型。
+# 这里单独保存模型名，方便同时给 embeddings 和缓存命名空间复用。
+model_name = "BAAI/bge-large-zh-v1.5"
 
-# Prompt 模板
-from langchain_core.prompts import PromptTemplate
+# 创建 Hugging Face 向量模型实例。
+# 这个对象负责把输入文本转换成高维向量。
+embeddings = HuggingFaceEmbeddings(model_name=model_name)
 
-# 读取 .env 环境变量
-load_dotenv()
+# 创建本地缓存目录。
+# 已经生成过的向量会被保存到 ./cache，下次处理相同文本时可以直接复用。
+store = LocalFileStore("./cache")
 
-# =========================
-# 1. 初始化大模型
-# =========================
-llm = init_chat_model(
-    model="qwen3.6-plus",  # 模型名称（Qwen 系列）
-    model_provider="openai",  # 使用 OpenAI 兼容接口
-
-    # API Key（从环境变量读取）
-    openai_api_key=os.getenv("DASHSCOPE_API_KEY"),
-
-    # API Base（例如 DashScope / OpenAI 兼容地址）
-    openai_api_base=os.getenv("DASHSCOPE_BASE_URL"),
+# 创建带缓存能力的嵌入器。
+# 执行流程是：先查缓存；如果缓存不存在，再调用底层模型生成向量，并写入缓存。
+# namespace 用模型名区分缓存空间，避免不同模型的结果混在一起。
+cached_embedder = CacheBackedEmbeddings.from_bytes_store(
+    embeddings,
+    store,
+    namespace=model_name,
 )
 
-# =========================
-# 2. 基础 Prompt（默认模板）
-# =========================
-prompt_default = PromptTemplate.from_template(
-    "讲一个关于{topic}的笑话"
-)
+# 准备要向量化的文本。
+# 前两句语义接近，第三句语义明显不同，适合演示相似度和距离的差异。
+texts = [
+    "我叫焚影，我喜欢打篮球",
+    "这个叫焚影的家伙，喜欢打篮球",
+    "LangChain是什么",
+]
 
-# =========================
-# 3. 将 Prompt 改造成“可配置多分支版本”
-# =========================
-# configurable_alternatives：
-# 👉 允许在运行时根据 prompt_style 选择不同 prompt
-prompt_configurable = prompt_default.configurable_alternatives(
-    ConfigurableField(id="prompt_style"),  # 配置字段名（运行时通过它切换）
+# 批量生成文本向量。
+# 返回值是一个二维列表：每条文本对应一个高维向量。
+vectors = cached_embedder.embed_documents(texts)
+print(vectors)
 
-    default_key="joke",  # 默认走 joke 模式
+# 分别取出三条文本对应的向量，便于后续计算。
+A, B, C = vectors
 
-    # ===== 各种可选 prompt 分支 =====
-    joke=PromptTemplate.from_template("讲一个关于{topic}的笑话"),
-    poem=PromptTemplate.from_template("写一首关于{topic}的短诗"),
-    story=PromptTemplate.from_template("写一个关于{topic}的小故事"),
-    fact=PromptTemplate.from_template("列举关于{topic}的三个有趣事实")
-)
+# 计算 A 和 B 的余弦相似度。
+# 余弦相似度越接近 1，通常表示两段文本语义越相似。
+similarity_ab = np.dot(A, B) / (np.linalg.norm(A) * np.linalg.norm(B))
+print(similarity_ab)
 
-# =========================
-# 4. 组装 LCEL Chain
-# =========================
-# Prompt（可切换） → LLM → 输出解析
-chain_configurable = prompt_configurable | llm | StrOutputParser()
+# 计算 A 和 C 的余弦相似度。
+# 由于两段文本主题不同，这个值通常会更低。
+similarity_ac = np.dot(A, C) / (np.linalg.norm(A) * np.linalg.norm(C))
+print(similarity_ac)
 
-# =========================
-# 5. 运行时配置（控制走哪个 prompt）
-# =========================
-config_joke = {"configurable": {"prompt_style": "joke"}}
-config_poem = {"configurable": {"prompt_style": "poem"}}
-config_story = {"configurable": {"prompt_style": "story"}}
+# 计算 A 和 B 的欧氏距离。
+# 欧氏距离越小，通常表示两个向量越接近。
+distance_ab = np.linalg.norm(np.array(A) - np.array(B))
+print(distance_ab)
 
-# =========================
-# 6. 测试不同分支效果
-# =========================
-print("Joke 模式:")
-print(chain_configurable.invoke({"topic": "python"}, config=config_joke))
-
-print("\nPoem 模式:")
-print(chain_configurable.invoke({"topic": "python"}, config=config_poem))
-
-print("\nStory 模式:")
-print(chain_configurable.invoke({"topic": "python"}, config=config_story))
-
-# ==========================================================
-# 7. 第二种方式：直接使用 RunnableConfigurableAlternatives
-# ==========================================================
-
-# 这种方式更“显式”，不用依赖 prompt 的 configurable_alternatives
-configurable_prompt = RunnableConfigurableAlternatives(
-    which=ConfigurableField(id="prompt_type"),  # 配置字段名
-
-    # 默认 prompt（simple）
-    default=PromptTemplate.from_template("简单回答：{question}"),
-    default_key="simple",
-
-    # 可选分支 prompt
-    alternatives={
-        "detailed": PromptTemplate.from_template("详细解释：{question}"),
-        "casual": PromptTemplate.from_template("用口语回答：{question}")
-    }
-)
-
-# 组装 chain
-configurable_chain = configurable_prompt | llm | StrOutputParser()
-
-# 运行：选择 detailed 分支
-detailed_result = configurable_chain.invoke(
-    {"question": "什么是云计算？"},
-    config={"configurable": {"prompt_type": "detailed"}}
-)
-
-# 输出截断展示
-print(f"\n详细模式回答: {detailed_result[:150]}...")
+# 计算 A 和 C 的欧氏距离。
+# 如果语义差异较大，这个距离通常会更大。
+distance_ac = np.linalg.norm(np.array(A) - np.array(C))
+print(distance_ac)

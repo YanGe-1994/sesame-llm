@@ -34,3 +34,7 @@ class Config:
             "pool_recycle": int(_get_env("SQLALCHEMY_POOL_RECYCLE")),
         }
         self.SQLALCHEMY_ECHO = _get_bool_env("SQLALCHEMY_ECHO")
+
+        # debug本地记忆配置
+        self.DEBUG_MEMORY_DIR = _get_env("DEBUG_MEMORY_DIR")
+        self.DEBUG_MEMORY_MAX_ROUNDS = int(_get_env("DEBUG_MEMORY_MAX_ROUNDS"))

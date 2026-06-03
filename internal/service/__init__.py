@@ -6,7 +6,9 @@
 @File   : __init__.py.py
 """
 from .app_service import AppService
+from .app_debug_memory_service import AppDebugMemoryService
 
 __all__ = [
     "AppService",
+    "AppDebugMemoryService",
 ]

@@ -15,4 +15,8 @@ DEFAULT_CONFIG = {
     "SQLALCHEMY_POOL_SIZE": 30,
     "SQLALCHEMY_POOL_RECYCLE": 3600,
     "SQLALCHEMY_ECHO": "True",
+
+    # debug本地记忆配置
+    "DEBUG_MEMORY_DIR": "data/debug_memory",
+    "DEBUG_MEMORY_MAX_ROUNDS": 3,
 }

@@ -19,6 +19,7 @@ from internal.exception import NotFoundException
 from internal.schema.app_schema import CompletionReq
 from internal.service import AppService, AppDebugMemoryService
 from pkg.response import success_json, validate_error_json
+from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
 
 
 @inject
@@ -27,6 +28,7 @@ class AppHandler:
     """应用控制器"""
     app_service: AppService
     app_debug_memory_service: AppDebugMemoryService
+    builtin_provider_manager:BuiltinProviderManager
 
     def debug(self, appid: uuid.UUID):
         """聊天接口"""
@@ -56,3 +58,9 @@ class AppHandler:
         content = completion.invoke({})
         self.app_debug_memory_service.append_and_compact(appid, req.query.data, content, llm)
         return success_json({"content": content})
+
+    def ping (self):
+        google_serper = self.builtin_provider_manager.get_tool('google','google_serper')()
+        print('google_serper', google_serper)
+        rults = google_serper.invoke('2026世界杯有哪些国家参加，主办方是谁')
+        return success_json(rults)

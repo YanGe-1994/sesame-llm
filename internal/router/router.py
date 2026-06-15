@@ -26,5 +26,7 @@ class Router:
         # 2.将url与对应的控制器方法做绑定
         bp.add_url_rule("/apps/debug/<uuid:appid>", methods=["POST"], view_func=self.app_handler.debug)
 
+        bp.add_url_rule('/ping',methods=["POST"], view_func=self.app_handler.ping)
+
         # 3.在应用上去注册蓝图
         app.register_blueprint(bp)

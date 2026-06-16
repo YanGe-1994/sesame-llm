@@ -17,7 +17,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.chat_models import init_chat_model
 from internal.exception import NotFoundException
 from internal.schema.app_schema import CompletionReq
-from internal.service import AppService, AppDebugMemoryService
+from internal.service import AppService
 from pkg.response import success_json, validate_error_json
 from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
 
@@ -27,7 +27,6 @@ from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
 class AppHandler:
     """应用控制器"""
     app_service: AppService
-    app_debug_memory_service: AppDebugMemoryService
     builtin_provider_manager:BuiltinProviderManager
 
     def debug(self, appid: uuid.UUID):
@@ -48,19 +47,20 @@ class AppHandler:
             base_url=os.getenv("DASHSCOPE_BASE_URL"),
         )
 
-
-        memory_state = self.app_debug_memory_service.load(appid)
-        chat_prompt = ChatPromptTemplate.from_messages(
-            self.app_debug_memory_service.build_prompt_messages(memory_state, req.query.data)
-        )
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "你是OpenAI开发的聊天机器人，请根据用户的提问进行回复"),
+            ("human", "{query}"),
+        ])
         completion = chat_prompt | llm | parser
 
-        content = completion.invoke({})
-        self.app_debug_memory_service.append_and_compact(appid, req.query.data, content, llm)
+        content = completion.invoke({"query": req.query.data})
         return success_json({"content": content})
 
     def ping (self):
         google_serper = self.builtin_provider_manager.get_tool('google','google_serper')()
+        get_time = self.builtin_provider_manager.get_tool('time','current_time')()
+        print("get_time", get_time)
+        current_time = get_time.invoke('')
         print('google_serper', google_serper)
-        rults = google_serper.invoke('2026世界杯有哪些国家参加，主办方是谁')
+        rults = google_serper.invoke('当前的日期是'+ current_time +',请问今天世界杯有哪几场比赛')
         return success_json(rults)

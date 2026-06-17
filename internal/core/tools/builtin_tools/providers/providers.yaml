@@ -16,3 +16,15 @@
   icon: icon.svg
   background: "#FFFFFF"
   category: search
+- name: wikipedia
+  label: 维基百科
+  description: 维基百科是一个由全世界的志愿者创建和编辑的免费在线百科全书。
+  icon: icon.svg
+  background: "#FFFFFF"
+  category: other
+- name: dashscope
+  label: 阿里百炼
+  description: 阿里百炼平台是一个提供各种模型工具的平台
+  icon: icon.svg
+  background: "#FFFFFF"
+  category: other

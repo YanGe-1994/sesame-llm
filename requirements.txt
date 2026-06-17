@@ -14,3 +14,4 @@ WTForms==3.2.2
 pydantic
 langchain-community
 pyyaml
+dashscope

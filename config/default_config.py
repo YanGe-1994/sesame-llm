@@ -16,7 +16,18 @@ DEFAULT_CONFIG = {
     "SQLALCHEMY_POOL_RECYCLE": 3600,
     "SQLALCHEMY_ECHO": "True",
 
-    # debug本地记忆配置
-    "DEBUG_MEMORY_DIR": "data/debug_memory",
-    "DEBUG_MEMORY_MAX_ROUNDS": 3,
+    # Redis数据库配置
+    "REDIS_HOST": "localhost",
+    "REDIS_PORT": 6379,
+    "REDIS_USERNAME": "",
+    "REDIS_PASSWORD": "",
+    "REDIS_DB": 0,
+    "REDIS_USE_SSL": "False",
+
+    # Celery默认配置
+    "CELERY_BROKER_DB": 1,
+    "CELERY_RESULT_BACKEND_DB": 1,
+    "CELERY_TASK_IGNORE_RESULT": "False",
+    "CELERY_RESULT_EXPIRES": 3600,
+    "CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP": "True",
 }

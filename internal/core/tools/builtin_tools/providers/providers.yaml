@@ -4,27 +4,32 @@
   icon: icon.svg
   background: "#E5E7EB"
   category: search
+  created_at: 1781789398506
 - name: time
   label: 时间
   description: 一个用于获取当前时间的工具
   icon: icon.svg
   background: "#E5E7EB"
   category: tool
+  created_at: 1781789398506
 - name: duckduckgo
   label: DuckDuckGo
   description: 一个注重隐私的搜索引擎。
   icon: icon.svg
   background: "#FFFFFF"
   category: search
+  created_at: 1781789398506
 - name: wikipedia
   label: 维基百科
   description: 维基百科是一个由全世界的志愿者创建和编辑的免费在线百科全书。
   icon: icon.svg
   background: "#FFFFFF"
   category: other
+  created_at: 1781789398506
 - name: dashscope
   label: 阿里百炼
   description: 阿里百炼平台是一个提供各种模型工具的平台
   icon: icon.svg
   background: "#FFFFFF"
   category: other
+  created_at: 1781789398506

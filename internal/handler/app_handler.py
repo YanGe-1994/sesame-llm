@@ -60,12 +60,6 @@ class AppHandler:
         return success_json({"content": content})
 
     def ping (self):
-        # google_serper = self.builtin_provider_manager.get_tool('google','google_serper')()
-        # get_time = self.builtin_provider_manager.get_tool('time','current_time')()
-        # print("get_time", get_time)
-        # current_time = get_time.invoke('')
-        # print('google_serper', google_serper)
-        # rults = google_serper.invoke('当前的日期是'+ current_time +',请问今天世界杯有哪几场比赛')
         dashscope_image = self.builtin_provider_manager.get_tool('dashscope','dashscope_image')()
-        rults = dashscope_image.invoke({"prompt":'帮我生成一张古风美女图片，越真实越好，不要有AI感', "size":'2048*2048',"negative_prompt":"请不要生成卡通人像"})
+        rults = dashscope_image.invoke({"prompt":'帮我生成学校开学的海报', "size":'2048*2048',"negative_prompt":"卡通人像","n": "1"})
         return success_json(rults)

@@ -6,7 +6,10 @@
 @File   : __init__.py.py
 """
 from .app_schema import CompletionReq
+from .api_tool_schema import ValidateOpenAPISchemaReq,GetApiToolProvidersWithPageReq
 
 __all__ =[
-    "CompletionReq"
+    "CompletionReq",
+    "ValidateOpenAPISchemaReq",
+    "GetApiToolProvidersWithPageReq",
 ]

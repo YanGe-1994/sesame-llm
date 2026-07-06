@@ -15,3 +15,13 @@ pydantic
 langchain-community
 pyyaml
 dashscope
+sqlalchemy
+pytest
+weaviate-client
+langchain-weaviate
+booktype
+langchain-huggingface
+langchain-classic
+tiktoken
+marshmallow
+jieba3k

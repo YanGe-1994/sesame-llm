@@ -36,7 +36,7 @@ DEFAULT_PROCESS_RULE = {
                 " ",
                 ""
             ],
-            "chunk_size": 500,
+            "chunk_size": 300,
             "chunk_overlap": 50,
         }
     }

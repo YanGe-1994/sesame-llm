@@ -9,7 +9,8 @@ from injector import inject
 from langchain_classic.embeddings import CacheBackedEmbeddings
 from langchain_community.storage import RedisStore
 from langchain_core.embeddings import Embeddings
-from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import DashScopeEmbeddings
 from redis import Redis
 
 
@@ -24,12 +25,16 @@ class EmbeddingsService:
     def __init__(self, redis: Redis):
         """构造函数，初始化文本嵌入模型客户端、存储器、缓存客户端"""
         self._store = RedisStore(client=redis)
-        self._embeddings = HuggingFaceEmbeddings(
-            model_name="nomic-ai/nomic-embed-text-v1.5",
-            cache_folder=os.path.join(os.getcwd(), "internal", "core", "embeddings"),
-            model_kwargs={
-                "trust_remote_code": True,
-            }
+        # self._embeddings = HuggingFaceEmbeddings(
+        #     model_name="Alibaba-NLP/gte-multilingual-base",
+        #     cache_folder=os.path.join(os.getcwd(), "internal", "core", "embeddings"),
+        #     model_kwargs={
+        #         "trust_remote_code": True,
+        #     }
+        # )
+        self._embeddings = DashScopeEmbeddings(
+            dashscope_api_key=os.getenv('DASHSCOPE_API_KEY'),
+            model="qwen3.7-text-embedding"  # 使用已确认支持的模型名
         )
         self._cache_backed_embeddings = CacheBackedEmbeddings.from_bytes_store(
             self._embeddings,

@@ -183,6 +183,7 @@ class Segment(db.Model):
 
     @property
     def document(self) -> "Document":
+        print('=========================',self.document_id)
         return db.session.query(Document).get(self.document_id)
 
 

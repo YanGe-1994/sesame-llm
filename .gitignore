@@ -1,3 +1,5 @@
 venv
 .env
 data/debug_memory/
+storage
+cache

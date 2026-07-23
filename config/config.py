@@ -51,4 +51,28 @@ class Config:
             "result_expires": int(_get_env("CELERY_RESULT_EXPIRES")),
             "broker_connection_retry_on_startup": _get_bool_env(
                 "CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP"),
+            # Redis broker连接配置
+            "broker_transport_options": {
+                # socket建立连接超时
+                "socket_connect_timeout": 10,
+
+                # socket读取超时
+                "socket_timeout": 30,
+
+                # Redis超时时自动重试
+                "retry_on_timeout": True,
+
+                # 定期检查Redis连接健康状态
+                "health_check_interval": 30,
+
+                # 防止任务丢失
+                "visibility_timeout": 3600,
+            },
+
+            # Redis result backend连接配置
+            "result_backend_transport_options": {
+                "socket_connect_timeout": 10,
+                "socket_timeout": 30,
+                "retry_on_timeout": True,
+            },
         }

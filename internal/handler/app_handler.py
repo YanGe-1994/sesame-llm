@@ -6,23 +6,27 @@
 @File   : app_handler.py
 """
 
+import json
 import os
 import uuid
 from dataclasses import dataclass
+from typing import Any, Dict, Generator
+from uuid import UUID
 
 from injector import inject
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.documents import Document
+from langchain_openai import ChatOpenAI
+from redis import Redis
 
-from langchain.chat_models import init_chat_model
+from flask_login import  login_required
 
-from internal.core.tools.builtin_tools.providers.dashscope import \
-    dashscope_image
-from internal.exception import NotFoundException
-from internal.schema.app_schema import CompletionReq
-from internal.service import AppService
-from pkg.response import success_json, validate_error_json
+from internal.core.agent.agents import FunctionCallAgent, AgentQueueManager
+from internal.core.agent.entities.agent_entity import AgentConfig
 from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
+from internal.entity.conversation_entity import InvokeFrom
+from internal.schema.app_schema import CompletionReq
+from internal.service import AppService, VectorDatabaseService, ApiToolService, EmbeddingsService, ConversationService
+from pkg.response import success_json, validate_error_json, success_message, compact_generate_response
 
 
 @inject
@@ -30,36 +34,115 @@ from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
 class AppHandler:
     """应用控制器"""
     app_service: AppService
-    builtin_provider_manager:BuiltinProviderManager
+    vector_database_service: VectorDatabaseService
+    api_tool_service: ApiToolService
+    embeddings_service: EmbeddingsService
+    builtin_provider_manager: BuiltinProviderManager
+    conversation_service: ConversationService
+    redis_client: Redis
 
-    def debug(self, appid: uuid.UUID):
-        """聊天接口"""
+    @login_required
+    def create_app(self):
+        """调用服务创建新的APP记录"""
+        app = self.app_service.create_app()
+        return success_message(f"应用已经成功创建，id为{app.id}")
+
+    @login_required
+    def get_app(self, id: uuid.UUID):
+        app = self.app_service.get_app(id)
+        return success_message(f"应用已经成功获取，名字是{app.name}")
+
+    @login_required
+    def update_app(self, id: uuid.UUID):
+        app = self.app_service.update_app(id)
+        return success_message(f"应用已经成功修改，修改的名字是:{app.name}")
+
+    @login_required
+    def delete_app(self, id: uuid.UUID):
+        app = self.app_service.delete_app(id)
+        return success_message(f"应用已经成功删除，id为:{app.id}")
+
+    @login_required
+    def debug(self, app_id: UUID):
+        """应用会话调试聊天接口，该接口为流式事件输出"""
         # 1.提取从接口中获取的输入，POST
         req = CompletionReq()
         if not req.validate():
             return validate_error_json(req.errors)
-        # app = self.app_service.get_app(appid)
-        # if app is None:
-        #     raise NotFoundException("应用不存在")
 
-        parser = StrOutputParser()
-        llm = init_chat_model(
-            model="qwen3.6-plus",
-            model_provider="openai",
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url=os.getenv("DASHSCOPE_BASE_URL"),
+        # 2.定义工具列表
+        tools = [
+            self.builtin_provider_manager.get_tool("google", "google_serper")(),
+            self.builtin_provider_manager.get_tool("time", "current_time")(),
+            # self.builtin_provider_manager.get_tool("dalle", "dalle3")(),
+        ]
+        agent = FunctionCallAgent(
+            AgentConfig(
+                llm=ChatOpenAI(
+                    model="qwen3.7-plus",
+                    api_key=os.getenv("DASHSCOPE_API_KEY"),
+                    base_url=os.getenv("DASHSCOPE_BASE_URL"),
+                    temperature=0.7,
+                ),
+                enable_long_term_memory=True,
+                tools=tools,
+            ),
+            AgentQueueManager(
+                user_id=uuid.uuid4(),
+                task_id=uuid.uuid4(),
+                invoke_from=InvokeFrom.DEBUGGER,
+                redis_client=self.redis_client,
+            ),
+
         )
 
-        chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "你是OpenAI开发的聊天机器人，请根据用户的提问进行回复"),
-            ("human", "{query}"),
-        ])
-        completion = chat_prompt | llm | parser
+        @login_required
+        def stream_event_response() -> Generator:
+            """流式事件输出响应"""
+            for agent_queue_event in agent.run(query=req.query.data, thread_id=str(app_id)):
+                data = {
+                    "id": str(agent_queue_event.id),
+                    "task_id": str(agent_queue_event.task_id),
+                    "event": agent_queue_event.event,
+                    "thought": agent_queue_event.thought,
+                    "observation": agent_queue_event.observation,
+                    "tool": agent_queue_event.tool,
+                    "tool_input": agent_queue_event.tool_input,
+                    "answer": agent_queue_event.answer,
+                    "latency": getattr(agent_queue_event, "latency", None)
+                }
+                yield f"event: {agent_queue_event.event.value}\ndata: {json.dumps(data)}\n\n"
 
-        content = completion.invoke({"query": req.query.data})
+        return compact_generate_response(stream_event_response())
+
+    @classmethod
+    def _combine_documents(cls, documents: list[Document]) -> str:
+        """将传入的文档列表合并成字符串"""
+        return "\n\n".join([document.page_content for document in documents])
+
+    def ping(self):
+        from internal.core.agent.agents import FunctionCallAgent
+        from internal.core.agent.entities.agent_entity import AgentConfig
+        from langchain_openai import ChatOpenAI
+
+        agent = FunctionCallAgent(
+            AgentConfig(
+                llm=ChatOpenAI(
+                    model="qwen-plus",
+                    api_key= os.getenv("DASHSCOPE_API_KEY"),
+                    base_url=os.getenv("DASHSCOPE_BASE_URL"),
+                    temperature=0.7,
+                ),
+                preset_prompt="你是一个拥有20年经验的诗人，请根据用户提供的主题来写一首诗"
+            ),
+            AgentQueueManager(
+                user_id=uuid.uuid4(),
+                task_id=uuid.uuid4(),
+                invoke_from=InvokeFrom.DEBUGGER,
+                redis_client=self.redis_client,
+            )
+        )
+        state = agent.run("程序员", "66626262626", "")
+        content = state["messages"][-1].content
+
         return success_json({"content": content})
-
-    def ping (self):
-        dashscope_image = self.builtin_provider_manager.get_tool('dashscope','dashscope_image')()
-        rults = dashscope_image.invoke({"prompt":'帮我生成学校开学的海报', "size":'2048*2048',"negative_prompt":"卡通人像","n": "1"})
-        return success_json(rults)

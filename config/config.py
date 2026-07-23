@@ -44,6 +44,13 @@ class Config:
         self.REDIS_USE_SSL = _get_bool_env("REDIS_USE_SSL")
 
         # Celery配置
+        # 认证安全配置
+        self.ACCESS_TOKEN_TTL_SECONDS = int(_get_env("ACCESS_TOKEN_TTL_SECONDS"))
+        self.REFRESH_TOKEN_TTL_SECONDS = int(_get_env("REFRESH_TOKEN_TTL_SECONDS"))
+        self.AUTH_COOKIE_SECURE = _get_bool_env("AUTH_COOKIE_SECURE")
+        self.AUTH_COOKIE_SAMESITE = _get_env("AUTH_COOKIE_SAMESITE")
+        self.FRONTEND_ORIGIN = _get_env("FRONTEND_ORIGIN")
+
         self.CELERY = {
             "broker_url": f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{int(_get_env('CELERY_BROKER_DB'))}",
             "result_backend": f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{int(_get_env('CELERY_RESULT_BACKEND_DB'))}",

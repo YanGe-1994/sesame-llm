@@ -31,7 +31,7 @@ class JwtService:
         """解析传入的token信息得到载荷"""
         secret_key = os.getenv("JWT_SECRET_KEY")
         try:
-            return jwt.decode(token, secret_key, algorithms=["HS256"])
+            return jwt.decode(token, secret_key, algorithms=["HS256"], issuer="llmops")
         except jwt.ExpiredSignatureError:
             raise UnauthorizedException("授权认证凭证已过期请重新登陆")
         except jwt.InvalidTokenError:

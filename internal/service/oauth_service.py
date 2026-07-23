@@ -8,7 +8,7 @@
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from flask import request
@@ -19,8 +19,8 @@ from internal.model import AccountOAuth
 from pkg.oauth import OAuth, GithubOAuth, AlipayOAuth
 from pkg.sqlalchemy import SQLAlchemy
 from .account_service import AccountService
+from .auth_session_service import AuthSessionService
 from .base_service import BaseService
-from .jwt_service import JwtService
 
 def load_key(file_path: str) -> str:
     """
@@ -40,8 +40,8 @@ def load_key(file_path: str) -> str:
 class OAuthService(BaseService):
     """第三方授权你认证服务"""
     db: SQLAlchemy
-    jwt_service: JwtService
     account_service: AccountService
+    auth_session_service: AuthSessionService
 
     @classmethod
     def get_all_oauth(cls) -> dict[str, OAuth]:
@@ -136,15 +136,4 @@ class OAuthService(BaseService):
         )
 
         # 10.生成授权凭证信息
-        expire_at = int((datetime.now() + timedelta(days=30)).timestamp())
-        payload = {
-            "sub": str(account.id),
-            "iss": "llmops",
-            "exp": expire_at,
-        }
-        access_token = self.jwt_service.generate_token(payload)
-
-        return {
-            "expire_at": expire_at,
-            "access_token": access_token,
-        }
+        return self.auth_session_service.create_session(str(account.id), request)

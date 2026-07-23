@@ -52,10 +52,10 @@ class Http(Flask):
         # 5. 解决前后端跨域问题
         CORS(self, resources={
             r"/*": {
-                "origins": "*",
+                "origins": ["http://localhost:5173","http://sesame.net.cn:5173"],
                 "supports_credentials": True,
                 "methods":['GET','POST'],
-                "allow_headers":["Content-Type","Authorization"],
+                "allow_headers":["Content-Type","Authorization","X-Device-Id"],
             }
         })
 

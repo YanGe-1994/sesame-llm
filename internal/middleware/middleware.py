@@ -13,7 +13,7 @@ from injector import inject
 
 from internal.exception import UnauthorizedException
 from internal.model import Account
-from internal.service import JwtService, AccountService
+from internal.service import JwtService, AccountService, AuthSessionService
 
 
 @inject
@@ -22,6 +22,7 @@ class Middleware:
     """应用中间件，可以重写request_loader与unauthorized_handler"""
     jwt_service: JwtService
     account_service: AccountService
+    auth_session_service: AuthSessionService
 
     def request_loader(self, request: Request) -> Optional[Account]:
         """登录管理器的请求加载器"""
@@ -44,6 +45,10 @@ class Middleware:
             # 5.解析token信息得到用户信息并返回
             payload = self.jwt_service.parse_token(access_token)
             account_id = payload.get("sub")
-            return self.account_service.get_account(account_id)
+            self.auth_session_service.validate_access_session(payload, request)
+            account = self.account_service.get_account(account_id)
+            if not account:
+                raise UnauthorizedException("授权账号不存在，请重新登陆")
+            return account
         else:
             return None

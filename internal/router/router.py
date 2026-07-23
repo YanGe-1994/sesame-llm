@@ -204,6 +204,11 @@ class Router:
             view_func=self.auth_handler.password_login,
         )
         bp.add_url_rule(
+            "/auth/refresh",
+            methods=["POST"],
+            view_func=self.auth_handler.refresh,
+        )
+        bp.add_url_rule(
             "/auth/logout",
             methods=["POST"],
             view_func=self.auth_handler.logout,

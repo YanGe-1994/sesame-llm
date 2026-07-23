@@ -6,7 +6,9 @@
 @File   : oauth_handler.py
 """
 from dataclasses import dataclass
+from datetime import datetime
 
+from flask import current_app, make_response
 from injector import inject
 
 from internal.schema.oauth_schema import AuthorizeReq, AuthorizeResp
@@ -40,4 +42,14 @@ class OAuthHandler:
         # 2.调用服务登录账号
         credential = self.oauth_service.oauth_login(provider_name, req.code.data)
 
-        return success_json(AuthorizeResp().dump(credential))
+        response = make_response(success_json(AuthorizeResp().dump(credential)))
+        response.set_cookie(
+            "refresh_token",
+            credential["refresh_token"],
+            max_age=max(int(credential["refresh_expire_at"]) - int(datetime.now().timestamp()), 1),
+            httponly=True,
+            secure=current_app.config.get("AUTH_COOKIE_SECURE", False),
+            samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
+            path="/auth/refresh",
+        )
+        return response

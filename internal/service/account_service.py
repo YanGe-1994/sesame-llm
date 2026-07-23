@@ -8,7 +8,7 @@
 import base64
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +20,7 @@ from internal.model import Account, AccountOAuth
 from pkg.password import hash_password, compare_password
 from pkg.sqlalchemy import SQLAlchemy
 from .base_service import BaseService
-from .jwt_service import JwtService
+from .auth_session_service import AuthSessionService
 
 
 @inject
@@ -28,7 +28,7 @@ from .jwt_service import JwtService
 class AccountService(BaseService):
     """账号服务"""
     db: SQLAlchemy
-    jwt_service: JwtService
+    auth_session_service: AuthSessionService
 
     def get_account(self, account_id: UUID) -> Account:
         """根据id获取指定的账号模型"""
@@ -91,13 +91,7 @@ class AccountService(BaseService):
             raise FailException("账号不存在或者密码错误，请核实后重试")
 
         # 3.生成凭证信息
-        expire_at = int((datetime.now() + timedelta(days=30)).timestamp())
-        payload = {
-            "sub": str(account.id),
-            "iss": "llmops",
-            "exp": expire_at,
-        }
-        access_token = self.jwt_service.generate_token(payload)
+        credential = self.auth_session_service.create_session(str(account.id), request)
 
         # 4.更新账号的登录信息
         self.update(
@@ -106,7 +100,4 @@ class AccountService(BaseService):
             last_login_ip=request.remote_addr,
         )
 
-        return {
-            "expire_at": expire_at,
-            "access_token": access_token,
-        }
+        return credential

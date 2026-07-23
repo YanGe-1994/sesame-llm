@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(PYTHONPATH=\"D:/Code/sesame-llm\" python *)"
+    ]
+  }
+}

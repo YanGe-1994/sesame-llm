@@ -95,7 +95,12 @@ class OAuthService(BaseService):
         oauth = self.get_oauth_by_provider_name(provider_name)
 
         # 2.根据code从第三方登录服务中获取access_token
-        oauth_access_token, open_id = oauth.get_access_token(code)
+        token_result = oauth.get_access_token(code)
+        if isinstance(token_result, tuple):
+            oauth_access_token, open_id = token_result
+        else:
+            oauth_access_token = token_result
+            open_id = None
         # 3.根据获取到的token提取user_info信息
         oauth_user_info = oauth.get_user_info(oauth_access_token, open_id=open_id)
         # 4.根据provider_name+openid获取授权记录

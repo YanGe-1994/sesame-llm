@@ -11,10 +11,12 @@ from sqlalchemy import (
     String,
     Text,
     DateTime,
+    Integer,
     PrimaryKeyConstraint,
     Index,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 from internal.extension.database_extension import db
 
@@ -33,6 +35,39 @@ class App(db.Model):
     icon = Column(String(255), nullable=False, server_default=text("''::character varying"))
     description = Column(Text, nullable=False, server_default=text("''::text"))
     status = Column(String(255), nullable=False, server_default=text("''::character varying"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(0)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(0)"),
+    )
+    created_at = Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP(0)"))
+
+
+class DraftAppConfig(db.Model):
+    """应用草稿配置模型"""
+    __tablename__ = "draft_app_config"
+    __table_args__ = (
+        PrimaryKeyConstraint("id", name="pk_draft_app_config_id"),
+        Index("idx_draft_app_config_app_id", "app_id"),
+    )
+
+    id = Column(UUID, nullable=False, server_default=text("uuid_generate_v4()"))
+    app_id = Column(UUID, nullable=False)
+    model_config = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    dialog_round = Column(Integer, nullable=False, server_default=text("3"))
+    preset_prompt = Column(Text, nullable=False, server_default=text("''::text"))
+    tools = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    workflows = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    datasets = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    retrieval_config = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    long_term_memory = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    opening_statement = Column(Text, nullable=False, server_default=text("''::text"))
+    opening_questions = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    speech_to_text = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    text_to_speech = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    suggested_after_answer = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    review_config = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     updated_at = Column(
         DateTime,
         nullable=False,

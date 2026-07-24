@@ -70,7 +70,7 @@ class GithubOAuth(OAuth):
         # 4.提取邮箱数据
         primary_email = next((email for email in email_info if email.get("primary", None)), None)
 
-        return {**raw_info, "email": primary_email.get("email", None)}
+        return {**raw_info, "email": primary_email.get("email") if primary_email else None}
 
     def _transform_user_info(self, raw_info: dict) -> OAuthUserInfo:
         # 1.提取邮箱，如果不存在设置一个默认邮箱

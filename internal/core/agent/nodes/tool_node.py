@@ -56,13 +56,23 @@ class ToolNode:
             start_at = time.perf_counter()
 
             # 5.获取工具并调用工具
-            tool = tools_by_name[tool_call["name"]]
-            tool_result = tool.invoke(tool_call["args"])
+            tool = tools_by_name.get(tool_call["name"])
+            try:
+                if tool is None:
+                    raise ValueError(f"工具 {tool_call['name']} 不存在或未绑定")
+                tool_result = tool.invoke(tool_call.get("args") or {})
+                tool_result_content = self._serialize_tool_result(tool_result)
+            except Exception as exc:
+                tool_result_content = self._serialize_tool_result({
+                    "success": False,
+                    "error": str(exc),
+                    "tool": tool_call["name"],
+                })
 
             # 6.将工具消息添加到消息列表中
             messages.append(ToolMessage(
                 tool_call_id=tool_call["id"],
-                content=json.dumps(tool_result),
+                content=tool_result_content,
                 name=tool_call["name"],
             ))
 
@@ -76,10 +86,16 @@ class ToolNode:
                 id=id,
                 task_id=self.queue_manager.task_id,
                 event=event,
-                observation=json.dumps(tool_result),
+                observation=tool_result_content,
                 tool=tool_call["name"],
-                tool_input=tool_call["args"],
+                tool_input=tool_call.get("args") or {},
                 latency=(time.perf_counter() - start_at),
             ))
 
         return {"messages": messages}
+
+    @staticmethod
+    def _serialize_tool_result(tool_result) -> str:
+        if isinstance(tool_result, str):
+            return tool_result
+        return json.dumps(tool_result, ensure_ascii=False, default=str)

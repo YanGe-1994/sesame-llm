@@ -39,6 +39,7 @@ class RetrievalService(BaseService):
             k: int = 4,
             score: float = 0,
             retrival_source: str = RetrievalSource.HIT_TESTING,
+            source_app_id: UUID | None = None,
     ) -> list[LCDocument]:
         """根据传递的query+知识库列表执行检索，并返回检索的文档+得分数据（如果检索策略为全文检索，则得分为0）"""
         # 1.提取知识库列表并校验权限同时更新知识库id
@@ -87,8 +88,7 @@ class RetrievalService(BaseService):
                 dataset_id=dataset_id,
                 query=query,
                 source=retrival_source,
-                # todo:等待APP配置模块完成后进行调整
-                source_app_id=None,
+                source_app_id=source_app_id,
                 created_by=account_id,
             )
 

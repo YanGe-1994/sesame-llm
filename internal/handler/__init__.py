@@ -5,6 +5,7 @@
 @Author : yange19940310@gmail.com
 @File   : __init__.py.py
 """
+from .ai_handler import AIHandler
 from .api_tool_handler import ApiToolHandler
 from .app_handler import AppHandler
 from .builtin_tool_handler import BuiltinToolHandler
@@ -18,6 +19,7 @@ from .auth_handler import AuthHandler
 
 
 __all__ = [
+    "AIHandler",
     "AppHandler",
     "BuiltinToolHandler",
     "ApiToolHandler",

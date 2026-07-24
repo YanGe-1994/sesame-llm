@@ -71,20 +71,11 @@ class LLMNode:
             else:
                 gathered += chunk
 
-            #
-            # Detect Generation Type
-            #
-            if not generation_type:
-                if chunk.tool_calls:
-                    generation_type = "tool"
-                elif chunk.content:
-                    generation_type = "message"
+            if chunk.tool_calls:
+                generation_type = "tool"
 
-            #
-            # Message Event
-            #
-            if generation_type == "message":
-
+            if generation_type != "tool" and chunk.content:
+                generation_type = "message"
                 self.queue_manager.publish(
                     AgentQueueEvent(
                         id=event_id,

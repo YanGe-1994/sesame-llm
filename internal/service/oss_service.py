@@ -75,6 +75,36 @@ class OssService:
             hash=hashlib.sha3_256(file_content).hexdigest(),
         )
 
+    @classmethod
+    def upload_bytes(
+            cls,
+            file_content: bytes,
+            extension: str = "png",
+            prefix: str = "generated-images",
+    ) -> str:
+        """将内存中的文件直接上传到 OSS，并返回公网访问地址。"""
+        if not file_content:
+            raise FailException("上传文件内容不能为空")
+        safe_extension = (extension or "png").lower().lstrip(".")
+        if safe_extension == "jpeg":
+            safe_extension = "jpg"
+        if safe_extension not in ALLOWED_IMAGE_EXTENSION:
+            raise FailException(f"该.{safe_extension}扩展的文件不支持上传")
+
+        now = datetime.now()
+        object_key = (
+            f"{prefix.strip('/')}/{now.year}/{now.month:02d}/{now.day:02d}/"
+            f"{uuid.uuid4()}.{safe_extension}"
+        )
+        try:
+            cls._get_client().put_object(oss.PutObjectRequest(
+                bucket=cls._get_bucket(),
+                key=object_key,
+                body=file_content,
+            ))
+        except Exception as exc:
+            raise FailException("上传文件失败，请稍后重试") from exc
+        return cls.get_file_url(object_key)
     def download_file(self, key: str, file_path:str):
         """下载oos云端的文件到本地的指定路径"""
         client = self._get_client()

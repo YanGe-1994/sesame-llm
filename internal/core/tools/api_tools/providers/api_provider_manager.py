@@ -6,6 +6,7 @@
 @File   : api_provider_manager.py
 """
 from dataclasses import dataclass
+import re
 from typing import Type, Optional, Callable
 
 import requests
@@ -51,14 +52,17 @@ class ApiProviderManager(BaseModel):
                 parameters[parameter.get("in", ParameterIn.QUERY)][key] = value
 
             # 6.构建request请求并返回采集的内容
-            return requests.request(
+            response = requests.request(
                 method=tool_entity.method,
                 url=tool_entity.url.format(**parameters[ParameterIn.PATH]),
                 params=parameters[ParameterIn.QUERY],
                 json=parameters[ParameterIn.REQUEST_BODY],
                 headers={**header_map, **parameters[ParameterIn.HEADER]},
                 cookies=parameters[ParameterIn.COOKIE],
-            ).text
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response.text[:20000]
 
         return tool_func
 
@@ -74,16 +78,19 @@ class ApiProviderManager(BaseModel):
 
             fields[field_name] = (
                 field_type if field_required else Optional[field_type],
-                Field(description=field_description),
+                Field(... if field_required else None, description=field_description),
             )
 
         return create_model("DynamicModel", **fields)
 
     def get_tool(self, tool_entity: ToolEntity) -> BaseTool:
         """根据传递的配置获取自定义API工具"""
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", tool_entity.name).strip("_") or "tool"
+        provider_id = re.sub(r"[^a-zA-Z0-9_-]", "_", tool_entity.id).strip("_")
+        runtime_name = f"api_{provider_id}_{safe_name}"[:64]
         return StructuredTool.from_function(
             func=self._create_tool_func_from_tool_entity(tool_entity),
-            name=f"{tool_entity.id}_{tool_entity.name}",
+            name=runtime_name,
             description=tool_entity.description,
             args_schema=self._create_model_from_parameters(tool_entity.parameters),
         )

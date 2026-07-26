@@ -16,6 +16,7 @@ from .upload_file_handler import UploadFileHandler
 from .account_handler import AccountHandler
 from .oauth_handler import OAuthHandler
 from .auth_handler import AuthHandler
+from .mcp_handler import McpHandler
 
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "OAuthHandler",
     "AccountHandler",
     "AuthHandler",
+    "McpHandler",
 ]

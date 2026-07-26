@@ -18,6 +18,8 @@ class QueueEvent(str, Enum):
     AGENT_MESSAGE = "agent_message"  # 智能体消息事件
     AGENT_ACTION = "agent_action"  # 智能体动作
     DATASET_RETRIEVAL = "dataset_retrieval"  # 知识库检索事件
+    MCP_APPROVAL_REQUIRED = "mcp_approval_required"
+    MCP_TOOL_CALL = "mcp_tool_call"  # MCP工具调用事件
     AGENT_END = "agent_end"  # 智能体结束事件
     STOP = "stop"  # 智能体停止事件
     ERROR = "error"  # 智能体错误事件
@@ -37,7 +39,8 @@ class AgentQueueEvent(BaseModel):
 
     # 工具相关的字段
     tool: str = ""  # 调用工具的名字
-    tool_input: dict = Field(default_factory=dict)  # 工具的输入
+    tool_input: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)  # 工具的输入
 
     # 消息相关的数据
     message: list[dict] = Field(default_factory=dict)  # 推理使用的消息列表

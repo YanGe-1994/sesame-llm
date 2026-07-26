@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.messages import HumanMessage
+from flask import copy_current_request_context, has_request_context
 from langgraph.graph.state import CompiledStateGraph
 
 from internal.core.agent.agents.agent_queue_manager import AgentQueueManager
@@ -49,8 +50,16 @@ class AgentRuntime:
         异步运行 Graph
         """
 
+        invoke_target = self._invoke
+
+        if has_request_context():
+
+            invoke_target = copy_current_request_context(self._invoke)
+
+
         worker = threading.Thread(
-            target=self._invoke,
+
+            target=invoke_target,
             kwargs={
                 "query": query,
                 "thread_id": thread_id,

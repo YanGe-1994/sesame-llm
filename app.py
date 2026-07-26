@@ -34,7 +34,7 @@ async def main():
     print(f"成功加载了 {len(tools)} 个工具: {[t.name for t in tools]}")
 
     llm = init_chat_model(
-        model="glm-5.2",
+        model="qwen3.7-max-2026-06-08",
         model_provider="openai",
         api_key=os.getenv("DASHSCOPE_API_KEY"),
         base_url=os.getenv("DASHSCOPE_BASE_URL"),

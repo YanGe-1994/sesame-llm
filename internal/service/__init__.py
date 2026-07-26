@@ -26,6 +26,9 @@ from .vector_database_service import VectorDatabaseService
 from .jwt_service import JwtService
 from .auth_session_service import AuthSessionService
 from .oauth_service import OAuthService
+from .mcp_service import McpService
+from .mcp_runtime_service import McpRuntimeService
+from .mcp_audit_service import McpAuditService
 
 __all__ = [
     "BaseService",
@@ -49,4 +52,7 @@ __all__ = [
     "AuthSessionService",
     "AccountService",
     "OAuthService",
+    "McpService",
+    "McpRuntimeService",
+    "McpAuditService",
 ]

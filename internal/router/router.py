@@ -22,6 +22,7 @@ from internal.handler import (
     OAuthHandler,
     AccountHandler,
     AuthHandler,
+    McpHandler,
 )
 @inject
 @dataclass
@@ -38,6 +39,7 @@ class Router:
     oauth_handler: OAuthHandler
     account_handler: AccountHandler
     auth_handler: AuthHandler
+    mcp_handler: McpHandler
     def register_router(self, app: Flask):
         """注册路由"""
         # 1.创建一个蓝图（一组路由的集合）
@@ -58,7 +60,9 @@ class Router:
         bp.add_url_rule("/apps/<uuid:app_id>/conversations/messages", view_func=self.app_handler.get_debug_conversation_messages_with_page)
         bp.add_url_rule("/apps/<uuid:app_id>/conversations/delete-debug-conversation", methods=["POST"], view_func=self.app_handler.delete_debug_conversation)
         bp.add_url_rule("/apps/<uuid:app_id>/conversations/tasks/<uuid:task_id>/stop", methods=["POST"], view_func=self.app_handler.stop_debug_chat)
+        bp.add_url_rule("/apps/<uuid:app_id>/conversations/tasks/<uuid:task_id>/mcp-approvals/<uuid:approval_id>", methods=["POST"], view_func=self.app_handler.submit_mcp_approval)
         bp.add_url_rule("/apps/<uuid:app_id>/publish", methods=["POST"], view_func=self.app_handler.publish)
+        bp.add_url_rule("/apps/<uuid:app_id>/published-config", view_func=self.app_handler.get_published_app_config)
         bp.add_url_rule("/apps/<uuid:app_id>/cancel-publish", methods=["POST"], view_func=self.app_handler.cancel_publish)
         bp.add_url_rule("/apps/<uuid:app_id>/publish-histories", view_func=self.app_handler.get_publish_histories_with_page)
         bp.add_url_rule("/apps/<uuid:app_id>/fallback-history", methods=["POST"], view_func=self.app_handler.fallback_history_to_draft)
@@ -120,6 +124,19 @@ class Router:
             view_func=self.api_tool_handler.delete_api_tool_provider,
         )
 
+        # MCP 服务模块（P0.1：基础管理与工具目录契约）
+        bp.add_url_rule("/mcp-audit-logs", view_func=self.mcp_handler.get_audit_logs_with_page)
+        bp.add_url_rule("/mcp-servers", view_func=self.mcp_handler.get_servers_with_page)
+        bp.add_url_rule("/mcp-servers", methods=["POST"], view_func=self.mcp_handler.create_server)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>", view_func=self.mcp_handler.get_server)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>", methods=["POST"], view_func=self.mcp_handler.update_server)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>/delete", methods=["POST"], view_func=self.mcp_handler.delete_server)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>/tools", view_func=self.mcp_handler.get_server_tools)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>/test", methods=["POST"], view_func=self.mcp_handler.test_connection)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>/sync-tools", methods=["POST"], view_func=self.mcp_handler.sync_tools)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>/oauth/authorize", methods=["POST"], view_func=self.mcp_handler.begin_oauth_authorization)
+        bp.add_url_rule("/mcp-servers/oauth/callback", view_func=self.mcp_handler.oauth_callback)
+        bp.add_url_rule("/mcp-servers/<uuid:server_id>/oauth/disconnect", methods=["POST"], view_func=self.mcp_handler.disconnect_oauth)
         # 4.上传文件模块
         bp.add_url_rule("/upload-files/file", methods=["POST"],
                         view_func=self.upload_file_handler.upload_file)

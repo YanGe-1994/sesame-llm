@@ -7,16 +7,20 @@
 """
 from .api_tool import ApiTool, ApiToolProvider
 from .app import App, DraftAppConfig, AppDatasetJoin
+from .app_config_version import AppConfigVersion
 from .conversation import Conversation, Message, MessageAgentThought
+from .mcp import McpServer, McpTool
+from .mcp_audit import McpAuditLog
 from .dataset import Dataset, Document, Segment, KeywordTable, DatasetQuery, ProcessRule
 from .upload_file import UploadFile
 from .account import AccountOAuth, Account
 
 __all__ = [
-    "App", "DraftAppConfig", "AppDatasetJoin",
+    "App", "DraftAppConfig", "AppDatasetJoin", "AppConfigVersion",
     "ApiTool", "ApiToolProvider",
     "UploadFile",
     "Dataset", "Document", "Segment", "KeywordTable", "DatasetQuery", "ProcessRule",
     "Conversation", "Message", "MessageAgentThought",
+    "McpServer", "McpTool", "McpAuditLog",
     "AccountOAuth", "Account",
 ]

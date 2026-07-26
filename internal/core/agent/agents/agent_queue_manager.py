@@ -119,6 +119,10 @@ class AgentQueueManager:
             observation=str(error),
         ))
 
+    def is_stopped(self) -> bool:
+        """Return whether the current generation task has been stopped."""
+        return self._is_stopped()
+
     def _is_stopped(self) -> bool:
         """检测任务是否停止"""
         task_stopped_cache_key = self.generate_task_stopped_cache_key(self.task_id)

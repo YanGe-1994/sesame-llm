@@ -31,11 +31,10 @@ class BuiltinToolHandler:
         tool = self.builtin_tool_service.get_provider_tool(provider_name, tool_name)
         return success_json(tool)
 
-    @login_required
     def get_provider_icon(self, provider_name: str):
-        """根据传递的提供商获取icon图标流信息"""
+        """返回内置工具提供商的公开图标资源。"""
         icon, mimetype = self.builtin_tool_service.get_provider_icon(provider_name)
-        return send_file(io.BytesIO(icon), mimetype)
+        return send_file(io.BytesIO(icon), mimetype=mimetype)
 
     @login_required
     def get_categories(self):

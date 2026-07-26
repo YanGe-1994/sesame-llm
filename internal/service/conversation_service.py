@@ -44,7 +44,7 @@ class ConversationService(BaseService):
     @classmethod
     def _build_llm(cls, temperature: float = 0) -> ChatOpenAI:
         return ChatOpenAI(
-            model=os.getenv("DASHSCOPE_MODEL") or "glm-5.2",
+            model=os.getenv("DASHSCOPE_MODEL") or "qwen3.7-max-2026-06-08",
             api_key=os.getenv("DASHSCOPE_API_KEY"),
             base_url=os.getenv("DASHSCOPE_BASE_URL"),
             temperature=temperature,

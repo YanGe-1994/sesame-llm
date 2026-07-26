@@ -58,6 +58,7 @@ class DraftAppConfig(db.Model):
     dialog_round = Column(Integer, nullable=False, server_default=text("3"))
     preset_prompt = Column(Text, nullable=False, server_default=text("''::text"))
     tools = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    mcp_servers = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     workflows = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     datasets = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     retrieval_config = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))

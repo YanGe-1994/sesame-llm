@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: ..
+    image: sesame-llm-api:production
+    network_mode: host
+    env_file:
+      - .env.production
+    restart: unless-stopped
+    command:
+      - gunicorn
+      - --workers
+      - "1"
+      - --threads
+      - "8"
+      - --worker-class
+      - gthread
+      - --timeout
+      - "900"
+      - --bind
+      - 127.0.0.1:5000
+      - app.http.app:app
+
+  celery:
+    image: sesame-llm-api:production
+    network_mode: host
+    env_file:
+      - .env.production
+    restart: unless-stopped
+    depends_on:
+      - api
+    command:
+      - celery
+      - -A
+      - app.http.app:celery
+      - worker
+      - --loglevel=INFO
+      - --concurrency=1
+
+  web:
+    build:
+      context: ../../sesame-ui
+      args:
+        VITE_API_BASE_URL: /api
+    image: sesame-ui-web:production
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - api
+
+

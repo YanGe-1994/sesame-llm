@@ -50,6 +50,21 @@ class Config:
         self.AUTH_COOKIE_SECURE = _get_bool_env("AUTH_COOKIE_SECURE")
         self.AUTH_COOKIE_SAMESITE = _get_env("AUTH_COOKIE_SAMESITE")
         self.FRONTEND_ORIGIN = _get_env("FRONTEND_ORIGIN")
+        self.MCP_REQUIRE_HTTPS = _get_bool_env("MCP_REQUIRE_HTTPS")
+        self.MCP_ALLOW_PRIVATE_NETWORKS = _get_bool_env("MCP_ALLOW_PRIVATE_NETWORKS")
+        self.MCP_OUTBOUND_ALLOWED_PORTS = _get_env("MCP_OUTBOUND_ALLOWED_PORTS")
+        self.MCP_OUTBOUND_HOST_ALLOWLIST = _get_env("MCP_OUTBOUND_HOST_ALLOWLIST")
+        self.MCP_MAX_RESPONSE_BYTES = int(_get_env("MCP_MAX_RESPONSE_BYTES"))
+        self.MCP_RATE_LIMIT_WINDOW_SECONDS = int(_get_env("MCP_RATE_LIMIT_WINDOW_SECONDS"))
+        self.MCP_RATE_LIMIT_ACCOUNT = int(_get_env("MCP_RATE_LIMIT_ACCOUNT"))
+        self.MCP_RATE_LIMIT_SERVER = int(_get_env("MCP_RATE_LIMIT_SERVER"))
+        self.MCP_RATE_LIMIT_TOOL = int(_get_env("MCP_RATE_LIMIT_TOOL"))
+        self.MCP_CIRCUIT_FAILURE_THRESHOLD = int(_get_env("MCP_CIRCUIT_FAILURE_THRESHOLD"))
+        self.MCP_CIRCUIT_FAILURE_WINDOW_SECONDS = int(_get_env("MCP_CIRCUIT_FAILURE_WINDOW_SECONDS"))
+        self.MCP_CIRCUIT_BASE_BACKOFF_SECONDS = int(_get_env("MCP_CIRCUIT_BASE_BACKOFF_SECONDS"))
+        self.MCP_CIRCUIT_MAX_BACKOFF_SECONDS = int(_get_env("MCP_CIRCUIT_MAX_BACKOFF_SECONDS"))
+        self.MCP_CIRCUIT_HALF_OPEN_TIMEOUT_SECONDS = int(_get_env("MCP_CIRCUIT_HALF_OPEN_TIMEOUT_SECONDS"))
+        self.MCP_RESILIENCE_FAIL_OPEN = _get_bool_env("MCP_RESILIENCE_FAIL_OPEN")
 
         self.CELERY = {
             "broker_url": f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{int(_get_env('CELERY_BROKER_DB'))}",

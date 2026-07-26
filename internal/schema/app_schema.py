@@ -8,7 +8,7 @@
 from flask_wtf import FlaskForm
 from marshmallow import Schema, fields, pre_dump
 from wtforms import StringField, IntegerField
-from wtforms.validators import DataRequired, Length, Optional, NumberRange
+from wtforms.validators import DataRequired, Length, Optional, NumberRange, URL
 
 from internal.lib.helper import datetime_to_timestamp
 from internal.model import App, DraftAppConfig, Message, MessageAgentThought
@@ -28,15 +28,15 @@ class CreateAppReq(FlaskForm):
     """创建应用请求"""
     name = StringField("name", validators=[
         DataRequired("应用名称不能为空"),
-        Length(max=100, message="应用名称长度不能超过100字符"),
+        Length(max=40, message="应用名称长度不能超过40字符"),
     ])
     icon = StringField("icon", default="", validators=[
         Optional(),
-        Length(max=255, message="应用图标长度不能超过255字符"),
+        URL(message="应用图标必须是图片url链接"),
     ])
     description = StringField("description", default="", validators=[
         Optional(),
-        Length(max=2000, message="应用描述长度不能超过2000字符"),
+        Length(max=800, message="应用描述长度不能超过800字符"),
     ])
 
 
@@ -95,6 +95,7 @@ class UpdateDraftAppConfigReq(FlaskForm):
         Length(max=50000, message="人设与回复逻辑长度不能超过50000字符"),
     ])
     tools = ListField("tools", default=None)
+    mcp_servers = ListField("mcp_servers", default=None)
     workflows = ListField("workflows", default=None)
     datasets = ListField("datasets", default=None)
     retrieval_config = DictField("retrieval_config", default=None)
@@ -117,6 +118,7 @@ class GetDraftAppConfigResp(Schema):
     dialog_round = fields.Integer(dump_default=3)
     preset_prompt = fields.String(dump_default="")
     tools = fields.List(fields.Dict, dump_default=[])
+    mcp_servers = fields.List(fields.Dict, dump_default=[])
     workflows = fields.List(fields.Dict, dump_default=[])
     datasets = fields.List(fields.Raw, dump_default=[])
     retrieval_config = fields.Dict(dump_default={})
@@ -138,6 +140,7 @@ class GetDraftAppConfigResp(Schema):
             "dialog_round": data.dialog_round,
             "preset_prompt": data.preset_prompt,
             "tools": getattr(data, "hydrated_tools", data.tools),
+            "mcp_servers": getattr(data, "hydrated_mcp_servers", data.mcp_servers),
             "workflows": data.workflows,
             "datasets": getattr(data, "hydrated_datasets", data.datasets),
             "retrieval_config": data.retrieval_config,

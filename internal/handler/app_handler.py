@@ -28,10 +28,13 @@ from flask_login import current_user, login_required
 from internal.core.agent.agents import FunctionCallAgent, AgentQueueManager
 from internal.core.agent.entities.agent_entity import AgentConfig
 from internal.core.agent.entities.queue_entity import QueueEvent
+from internal.core.mcp.mcp_approval import McpApprovalError, McpApprovalService
+from internal.exception import ForbiddenException
 from internal.core.tools.api_tools.entities import ToolEntity
 from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
 from internal.entity.conversation_entity import InvokeFrom, MessageStatus
 from internal.entity.dataset_entity import RetrievalSource, RetrievalStrategy
+from internal.schema.app_publish_schema import AppConfigVersionResp
 from internal.schema.app_schema import (
     CompletionReq,
     CreateAppReq,
@@ -47,9 +50,9 @@ from internal.schema.app_schema import (
 )
 from internal.service import (
     AppService, VectorDatabaseService, ApiToolService, EmbeddingsService,
-    ConversationService, RetrievalService,
+    ConversationService, RetrievalService, McpRuntimeService, McpAuditService,
 )
-from pkg.paginator import PageModel
+from pkg.paginator import PageModel, PaginatorReq
 from pkg.response import success_json, validate_error_json, success_message, compact_generate_response
 
 
@@ -69,6 +72,8 @@ class AppHandler:
     builtin_provider_manager: BuiltinProviderManager
     conversation_service: ConversationService
     retrieval_service: RetrievalService
+    mcp_runtime_service: McpRuntimeService
+    mcp_audit_service: McpAuditService
     redis_client: Redis
 
     @login_required
@@ -169,29 +174,79 @@ class AppHandler:
         return success_message("调试任务已停止")
 
     @login_required
-    def publish(self, app_id: uuid.UUID):
+    def submit_mcp_approval(self, app_id: uuid.UUID, task_id: UUID, approval_id: UUID):
+        """Approve or reject a pending high-risk MCP tool call."""
         self.app_service.get_app(app_id, current_user)
-        return success_message("发布能力将在后续阶段实现")
+        task_belong = self.redis_client.get(
+            AgentQueueManager.generate_task_belong_cache_key(task_id),
+        )
+        if isinstance(task_belong, bytes):
+            task_belong = task_belong.decode("utf-8")
+        if task_belong != f"account-{current_user.id}":
+            raise ForbiddenException("无权处理该 MCP 工具审批")
+
+        action = str((request.get_json(silent=True) or {}).get("action") or "")
+        try:
+            approval = McpApprovalService(self.redis_client).decide(
+                approval_id=approval_id,
+                account_id=current_user.id,
+                task_id=task_id,
+                action=action,
+            )
+        except McpApprovalError as error:
+            raise ForbiddenException(str(error)) from error
+        self.mcp_audit_service.record(
+            account_id=current_user.id,
+            server_id=approval.get("server_id") or None,
+            task_id=task_id,
+            approval_id=approval_id,
+            event_type="approval_decided",
+            status="rejected" if action == "reject" else "approved",
+            risk_level=approval.get("risk_level") or "normal",
+            server_name="",
+            tool_name=approval.get("tool_name") or "",
+            tool_display_name=approval.get("display_name") or "",
+            request_data=approval.get("arguments") or {},
+            response_data={"action": action},
+        )
+        return success_json({
+            "approval_id": str(approval_id),
+            "status": approval["status"],
+        })
+    @login_required
+    def publish(self, app_id: uuid.UUID):
+        version = self.app_service.publish_app(app_id, current_user)
+        return success_message(f"应用发布成功，当前版本 #{version.version:03d}")
 
     @login_required
     def cancel_publish(self, app_id: uuid.UUID):
-        self.app_service.get_app(app_id, current_user)
-        return success_message("取消发布能力将在后续阶段实现")
+        self.app_service.cancel_publish(app_id, current_user)
+        return success_message("应用已取消发布")
 
     @login_required
     def get_publish_histories_with_page(self, app_id: uuid.UUID):
-        self.app_service.get_app(app_id, current_user)
-        return success_json(PageModel(list=[], paginator={
-            "total_page": 0,
-            "total_record": 0,
-            "current_page": 1,
-            "page_size": 20,
-        }))
+        req = PaginatorReq(request.args)
+        if not req.validate():
+            return validate_error_json(req.errors)
+        versions, paginator = self.app_service.get_publish_histories(app_id, current_user, req)
+        return success_json(PageModel(
+            list=AppConfigVersionResp(many=True).dump(versions),
+            paginator=paginator,
+        ))
 
     @login_required
     def fallback_history_to_draft(self, app_id: uuid.UUID):
-        self.app_service.get_app(app_id, current_user)
-        return success_message("版本回退能力将在后续阶段实现")
+        raw_version_id = (request.get_json(silent=True) or {}).get("app_config_version_id")
+        try:
+            version_id = UUID(str(raw_version_id))
+        except (TypeError, ValueError):
+            return validate_error_json({"app_config_version_id": ["发布版本 ID 格式不正确"]})
+        self.app_service.fallback_version_to_draft(app_id, version_id, current_user)
+        return success_message("发布版本已回滚到草稿，重新发布后才会影响线上版本")
+
+    @login_required
+    def get_published_app_config(self, app_id: uuid.UUID):
+        return success_json(self.app_service.get_published_config(app_id, current_user))
 
     @login_required
     def debug(self, app_id: UUID):
@@ -215,8 +270,9 @@ class AppHandler:
         long_term_memory_enabled = (draft_app_config.long_term_memory or {}).get("enable", False)
         model_config = draft_app_config.model_config or {}
         model_parameters = model_config.get("parameters") or {}
-        model_name = os.getenv("DASHSCOPE_MODEL") or "glm-5.2"
+        model_name = os.getenv("DASHSCOPE_MODEL") or "qwen3.7-max-2026-06-08"
         tools = self._build_debug_tools(draft_app_config.tools or [], current_user)
+        tools.extend(self.mcp_runtime_service.build_tools(draft_app_config.mcp_servers or [], current_user))
         dataset_retrieval_tool = self._build_dataset_retrieval_tool(
             app_id,
             draft_app_config.datasets or [],
@@ -270,6 +326,7 @@ class AppHandler:
                         "observation": agent_queue_event.observation,
                         "tool": agent_queue_event.tool,
                         "tool_input": agent_queue_event.tool_input,
+                        "metadata": agent_queue_event.metadata,
                         "answer": agent_queue_event.answer,
                         "message": agent_queue_event.message,
                         "message_token_count": agent_queue_event.message_token_count,

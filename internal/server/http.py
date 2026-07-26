@@ -50,9 +50,14 @@ class Http(Flask):
         login_manager.init_app(self)
 
         # 5. 解决前后端跨域问题
+        frontend_origins = [
+            origin.strip()
+            for origin in self.config.get("FRONTEND_ORIGIN", "").split(",")
+            if origin.strip()
+        ]
         CORS(self, resources={
             r"/*": {
-                "origins": ["http://localhost:5173","http://sesame.net.cn:5173"],
+                "origins": frontend_origins,
                 "supports_credentials": True,
                 "methods":['GET','POST'],
                 "allow_headers":["Content-Type","Authorization","X-Device-Id"],

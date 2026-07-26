@@ -13,8 +13,8 @@ from sqlalchemy import desc
 
 from internal.core.tools.builtin_tools.providers import BuiltinProviderManager
 
-from internal.exception import NotFoundException
-from internal.model import Account, App, DraftAppConfig, Dataset, ApiTool, ApiToolProvider
+from internal.exception import FailException, NotFoundException
+from internal.model import Account, App, AppConfigVersion, DraftAppConfig, Dataset, ApiTool, ApiToolProvider, McpServer, McpTool
 from internal.schema.app_schema import CreateAppReq, GetAppsWithPageReq, UpdateAppReq, UpdateDraftAppConfigReq
 from pkg.paginator import Paginator
 from pkg.sqlalchemy import SQLAlchemy
@@ -23,7 +23,7 @@ from .base_service import BaseService
 
 DEFAULT_MODEL_CONFIG = {
     "provider": "dashscope",
-    "model": "glm-5.2",
+    "model": "qwen3.7-max-2026-06-08",
     "parameters": {"temperature": 0.7},
 }
 DEFAULT_RETRIEVAL_CONFIG = {"retrieval_strategy": "semantic", "k": 4, "score": 0.5}
@@ -81,6 +81,7 @@ class AppService(BaseService):
         app = self.get_app(app_id, account)
         with self.db.auto_commit():
             self.db.session.query(DraftAppConfig).filter(DraftAppConfig.app_id == app_id).delete()
+            self.db.session.query(AppConfigVersion).filter(AppConfigVersion.app_id == app_id).delete()
             self.db.session.delete(app)
         return app
 
@@ -101,6 +102,7 @@ class AppService(BaseService):
         draft_app_config = self._get_draft_app_config(app_id)
         if draft_app_config is None:
             draft_app_config = self.create_draft_app_config(app_id)
+        draft_app_config = self._reconcile_draft_references(draft_app_config, account)
         return self._hydrate_draft_app_config(draft_app_config, account)
 
     def update_draft_app_config(
@@ -117,6 +119,7 @@ class AppService(BaseService):
             "dialog_round": "dialog_round",
             "preset_prompt": "preset_prompt",
             "tools": "tools",
+            "mcp_servers": "mcp_servers",
             "workflows": "workflows",
             "datasets": "datasets",
             "retrieval_config": "retrieval_config",
@@ -134,14 +137,17 @@ class AppService(BaseService):
             field = getattr(req, req_field)
             if field.data is not None:
                 if req_field == "tools":
-                    update_fields[model_field] = self._normalize_tools(field.data)
+                    update_fields[model_field] = self._normalize_tools(field.data, account)
                 elif req_field == "datasets":
                     update_fields[model_field] = self._normalize_datasets(field.data, account)
+                elif req_field == "mcp_servers":
+                    update_fields[model_field] = self._normalize_mcp_servers(field.data, account)
                 else:
                     update_fields[model_field] = field.data
         if update_fields:
             self.update(draft_app_config, **update_fields)
-        return draft_app_config
+        draft_app_config = self._reconcile_draft_references(draft_app_config, account)
+        return self._hydrate_draft_app_config(draft_app_config, account)
 
     def _normalize_datasets(self, datasets: list, account: Account) -> list[str]:
         """只保留属于当前账号的有效知识库引用。"""
@@ -165,9 +171,8 @@ class AppService(BaseService):
         }
         return [str(dataset_id) for dataset_id in dataset_ids if dataset_id in owned_ids][:5]
 
-    @staticmethod
-    def _normalize_tools(tools: list) -> list[dict]:
-        """将前端展示结构统一转换为可持久化、可执行的工具引用。"""
+    def _normalize_tools(self, tools: list, account: Account) -> list[dict]:
+        """Only persist tools that are still available to the current account."""
         normalized_tools = []
         tool_keys = set()
         for item in tools or []:
@@ -180,15 +185,41 @@ class AppService(BaseService):
             tool_id = item.get("tool_id") or tool.get("name") or tool.get("id")
             if tool_type not in {"builtin_tool", "api_tool"} or not provider_id or not tool_id:
                 continue
+            if tool_type == "builtin_tool":
+                builtin_provider = self.builtin_provider_manager.get_provider(str(provider_id))
+                tool_entity = builtin_provider.get_tool_entity(str(tool_id)) if builtin_provider else None
+                if tool_entity is None:
+                    continue
+                provider_id = builtin_provider.provider_entity.name
+                tool_id = tool_entity.name
+            else:
+                try:
+                    api_provider_id = UUID(str(provider_id))
+                except (TypeError, ValueError):
+                    continue
+                api_tool = self.db.session.query(ApiTool).join(
+                    ApiToolProvider,
+                    ApiTool.provider_id == ApiToolProvider.id,
+                ).filter(
+                    ApiTool.provider_id == api_provider_id,
+                    ApiTool.name == str(tool_id),
+                    ApiTool.account_id == account.id,
+                    ApiToolProvider.account_id == account.id,
+                ).one_or_none()
+                if api_tool is None:
+                    continue
+                provider_id = str(api_tool.provider_id)
+                tool_id = api_tool.name
             tool_key = (tool_type, str(provider_id), str(tool_id))
             if tool_key in tool_keys:
                 continue
             tool_keys.add(tool_key)
+            params = item.get("params") or tool.get("params") or {}
             normalized_tools.append({
                 "type": tool_type,
                 "provider_id": str(provider_id),
                 "tool_id": str(tool_id),
-                "params": item.get("params") or tool.get("params") or {},
+                "params": params if isinstance(params, dict) else {},
             })
         return normalized_tools[:5]
 
@@ -198,6 +229,22 @@ class AppService(BaseService):
     def _hydrate_draft_app_config(self, draft_app_config: DraftAppConfig, account: Account) -> DraftAppConfig:
         draft_app_config.hydrated_datasets = self._hydrate_datasets(draft_app_config.datasets or [], account)
         draft_app_config.hydrated_tools = self._hydrate_tools(draft_app_config.tools or [], account)
+        draft_app_config.hydrated_mcp_servers = self._hydrate_mcp_servers(draft_app_config.mcp_servers or [], account)
+        return draft_app_config
+
+    def _reconcile_draft_references(self, draft_app_config: DraftAppConfig, account: Account) -> DraftAppConfig:
+        """Remove deleted, inaccessible, or invalid tool and dataset references from a draft."""
+        current_tools = draft_app_config.tools or []
+        current_datasets = draft_app_config.datasets or []
+        valid_tools = self._normalize_tools(current_tools, account)
+        valid_datasets = self._normalize_datasets(current_datasets, account)
+        update_fields = {}
+        if valid_tools != current_tools:
+            update_fields["tools"] = valid_tools
+        if valid_datasets != current_datasets:
+            update_fields["datasets"] = valid_datasets
+        if update_fields:
+            self.update(draft_app_config, **update_fields)
         return draft_app_config
 
     def _hydrate_datasets(self, draft_datasets: list, account: Account) -> list[dict]:
@@ -231,16 +278,13 @@ class AppService(BaseService):
             tool_name = draft_tool.get("tool_id") or (draft_tool.get("tool") or {}).get("name")
             params = draft_tool.get("params") or (draft_tool.get("tool") or {}).get("params") or {}
             if not provider_id or not tool_name:
-                hydrated_tools.append(draft_tool)
                 continue
             if tool_type == "builtin_tool":
                 provider = self.builtin_provider_manager.get_provider(provider_id)
                 if provider is None:
-                    hydrated_tools.append(draft_tool)
                     continue
                 tool_entity = provider.get_tool_entity(tool_name)
                 if tool_entity is None:
-                    hydrated_tools.append(draft_tool)
                     continue
                 provider_entity = provider.provider_entity
                 hydrated_tools.append({
@@ -274,7 +318,6 @@ class AppService(BaseService):
                     ApiToolProvider.account_id == account.id,
                 ).one_or_none()
                 if api_tool is None:
-                    hydrated_tools.append(draft_tool)
                     continue
                 provider = api_tool.provider
                 hydrated_tools.append({
@@ -299,6 +342,282 @@ class AppService(BaseService):
                 })
         return hydrated_tools
 
+    def _normalize_mcp_servers(self, bindings: list, account: Account) -> list[dict]:
+        """只保存当前账号下状态正常、工具可用的 MCP 引用。"""
+        normalized = []
+        seen_server_ids = set()
+        for binding in bindings or []:
+            if not isinstance(binding, dict):
+                continue
+            try:
+                server_id = UUID(str(binding.get("server_id")))
+            except (TypeError, ValueError):
+                continue
+            if server_id in seen_server_ids or len(normalized) >= 5:
+                continue
+            server = self.db.session.query(McpServer).filter(
+                McpServer.id == server_id,
+                McpServer.account_id == account.id,
+                McpServer.status == "active",
+            ).one_or_none()
+            if server is None:
+                continue
+            requested_names = []
+            for name in binding.get("enabled_tools") or []:
+                name = str(name).strip()
+                if name and name not in requested_names:
+                    requested_names.append(name)
+            if not requested_names:
+                continue
+            tools = self.db.session.query(McpTool).filter(
+                McpTool.server_id == server.id,
+                McpTool.tool_name.in_(requested_names),
+                McpTool.enabled.is_(True),
+                McpTool.is_available.is_(True),
+            ).all()
+            tool_map = {tool.tool_name: tool for tool in tools}
+            valid_names = [name for name in requested_names if name in tool_map][:20]
+            if not valid_names:
+                continue
+            approval_policy = binding.get("approval_policy")
+            if approval_policy not in {"auto", "always_ask"}:
+                approval_policy = "auto"
+            normalized.append({
+                "server_id": str(server.id),
+                "enabled_tools": valid_names,
+                "tool_versions": {name: tool_map[name].schema_hash for name in valid_names},
+                "tool_overrides": binding.get("tool_overrides") if isinstance(binding.get("tool_overrides"), dict) else {},
+                "approval_policy": approval_policy,
+            })
+            seen_server_ids.add(server_id)
+        return normalized
+
+    def _hydrate_mcp_servers(self, bindings: list[dict], account: Account) -> list[dict]:
+        """回填 MCP 服务与工具名称，并保留失效引用以便前端提示。"""
+        hydrated = []
+        for binding in bindings or []:
+            if not isinstance(binding, dict):
+                continue
+            server_id = str(binding.get("server_id") or "")
+            tool_names = [str(name) for name in binding.get("enabled_tools") or [] if name]
+            try:
+                server_uuid = UUID(server_id)
+            except (TypeError, ValueError):
+                server_uuid = None
+            server = self.db.session.query(McpServer).filter(
+                McpServer.id == server_uuid,
+                McpServer.account_id == account.id,
+            ).one_or_none() if server_uuid else None
+            if server is None:
+                hydrated.append({
+                    **binding,
+                    "server": {"id": server_id, "name": "已删除的 MCP 服务", "status": "missing", "is_available": False},
+                    "tools": [
+                        {"name": name, "display_name": name, "is_available": False, "schema_changed": False}
+                        for name in tool_names
+                    ],
+                    "is_available": False,
+                })
+                continue
+            tools = self.db.session.query(McpTool).filter(
+                McpTool.server_id == server.id,
+                McpTool.tool_name.in_(tool_names),
+            ).all() if tool_names else []
+            tool_map = {tool.tool_name: tool for tool in tools}
+            versions = binding.get("tool_versions") or {}
+            hydrated_tools = []
+            for name in tool_names:
+                tool = tool_map.get(name)
+                hydrated_tools.append({
+                    "id": str(tool.id) if tool else "",
+                    "name": name,
+                    "display_name": (tool.display_name or tool.tool_name) if tool else name,
+                    "description": tool.description if tool else "",
+                    "is_available": bool(tool and tool.enabled and tool.is_available and server.status == "active"),
+                    "schema_changed": bool(tool and versions.get(name) and versions.get(name) != tool.schema_hash),
+                    "schema_hash": tool.schema_hash if tool else "",
+                })
+            hydrated.append({
+                **binding,
+                "server": {
+                    "id": str(server.id),
+                    "name": server.name,
+                    "description": server.description,
+                    "icon": server.icon,
+                    "status": server.status,
+                    "is_available": server.status == "active",
+                },
+                "tools": hydrated_tools,
+                "is_available": server.status == "active" and all(tool["is_available"] for tool in hydrated_tools),
+            })
+        return hydrated
+    def publish_app(self, app_id: UUID, account: Account) -> AppConfigVersion:
+        app = self.get_app(app_id, account)
+        draft = self._get_draft_app_config(app_id)
+        if draft is None:
+            raise NotFoundException("应用草稿配置不存在")
+        issues = self.validate_mcp_snapshot(draft.mcp_servers or [], account)
+        if issues:
+            raise FailException("MCP 发布校验失败：" + "；".join(issues))
+        config = self._snapshot_draft_config(draft)
+        config["mcp_servers"] = self._build_mcp_publish_snapshot(
+            draft.mcp_servers or [], account,
+        )
+        latest_version = self.db.session.query(AppConfigVersion.version).filter(
+            AppConfigVersion.app_id == app_id,
+        ).order_by(desc(AppConfigVersion.version)).first()
+        version = int(latest_version[0]) + 1 if latest_version else 1
+        with self.db.auto_commit():
+            published = AppConfigVersion(
+                app_id=app_id,
+                version=version,
+                config=config,
+                mcp_servers=config.get("mcp_servers") or [],
+            )
+            self.db.session.add(published)
+            app.status = "published"
+        return published
+
+    def cancel_publish(self, app_id: UUID, account: Account) -> App:
+        app = self.get_app(app_id, account)
+        return self.update(app, status="draft")
+
+    def get_publish_histories(self, app_id: UUID, account: Account, req):
+        self.get_app(app_id, account)
+        paginator = Paginator(self.db, req)
+        versions = paginator.paginate(
+            self.db.session.query(AppConfigVersion).filter(
+                AppConfigVersion.app_id == app_id,
+            ).order_by(desc(AppConfigVersion.version))
+        )
+        return versions, paginator
+
+    def fallback_version_to_draft(
+            self, app_id: UUID, version_id: UUID, account: Account,
+    ) -> DraftAppConfig:
+        self.get_app(app_id, account)
+        version = self.db.session.query(AppConfigVersion).filter(
+            AppConfigVersion.id == version_id,
+            AppConfigVersion.app_id == app_id,
+        ).one_or_none()
+        if version is None:
+            raise NotFoundException("发布版本不存在")
+        draft = self._get_draft_app_config(app_id)
+        if draft is None:
+            draft = self.create_draft_app_config(app_id)
+        config = version.config or {}
+        with self.db.auto_commit():
+            for field in self._snapshot_fields():
+                if field in config:
+                    setattr(draft, field, config[field])
+        return self._hydrate_draft_app_config(draft, account)
+
+    def get_published_config(self, app_id: UUID, account: Account) -> dict:
+        app = self.get_app(app_id, account)
+        if app.status != "published":
+            raise NotFoundException("应用尚未发布或已取消发布")
+        version = self.db.session.query(AppConfigVersion).filter(
+            AppConfigVersion.app_id == app_id,
+        ).order_by(desc(AppConfigVersion.version)).first()
+        if version is None:
+            raise NotFoundException("应用发布版本不存在")
+        issues = self.validate_mcp_snapshot(version.mcp_servers or [], account)
+        return {
+            "id": str(version.id),
+            "app_id": str(version.app_id),
+            "version": version.version,
+            "config": version.config or {},
+            "mcp_servers": version.mcp_servers or [],
+            "runtime_ready": len(issues) == 0,
+            "runtime_issues": issues,
+            "created_at": int(version.created_at.timestamp()),
+        }
+
+    def _build_mcp_publish_snapshot(self, bindings: list[dict], account: Account) -> list[dict]:
+        snapshots = []
+        for binding in bindings or []:
+            server_id = str(binding.get("server_id") or "")
+            try:
+                server_uuid = UUID(server_id)
+            except (TypeError, ValueError):
+                continue
+            server = self.db.session.query(McpServer).filter(
+                McpServer.id == server_uuid,
+                McpServer.account_id == account.id,
+            ).one_or_none()
+            if server is None:
+                continue
+            tool_names = [str(name) for name in binding.get("enabled_tools") or [] if name]
+            tools = self.db.session.query(McpTool).filter(
+                McpTool.server_id == server.id,
+                McpTool.tool_name.in_(tool_names),
+            ).all() if tool_names else []
+            tool_map = {tool.tool_name: tool for tool in tools}
+            snapshots.append({
+                **binding,
+                "server_name": server.name,
+                "server_transport": server.transport,
+                "auth_type": server.auth_type,
+                "tool_snapshots": [
+                    {
+                        "name": name,
+                        "display_name": tool_map[name].display_name or name,
+                        "schema_hash": tool_map[name].schema_hash,
+                        "risk_level": tool_map[name].risk_level,
+                        "approval_mode": tool_map[name].approval_mode,
+                    }
+                    for name in tool_names if name in tool_map
+                ],
+            })
+        return snapshots
+    def validate_mcp_snapshot(self, bindings: list[dict], account: Account) -> list[str]:
+        issues = []
+        for binding in bindings or []:
+            server_id = str(binding.get("server_id") or "")
+            try:
+                server_uuid = UUID(server_id)
+            except (TypeError, ValueError):
+                issues.append("MCP 服务引用无效")
+                continue
+            server = self.db.session.query(McpServer).filter(
+                McpServer.id == server_uuid,
+                McpServer.account_id == account.id,
+            ).one_or_none()
+            if server is None:
+                issues.append(f"MCP 服务 {server_id} 已删除")
+                continue
+            if server.status != "active":
+                issues.append(f"MCP 服务 {server.name} 当前不可用")
+                continue
+            if server.auth_type == "oauth2" and not server.encrypted_access_token:
+                issues.append(f"MCP 服务 {server.name} 尚未完成 OAuth 授权")
+            enabled_names = [str(name) for name in binding.get("enabled_tools") or [] if name]
+            versions = binding.get("tool_versions") or {}
+            tools = self.db.session.query(McpTool).filter(
+                McpTool.server_id == server.id,
+                McpTool.tool_name.in_(enabled_names),
+            ).all() if enabled_names else []
+            tool_map = {tool.tool_name: tool for tool in tools}
+            for tool_name in enabled_names:
+                tool = tool_map.get(tool_name)
+                if tool is None or not tool.enabled or not tool.is_available:
+                    issues.append(f"MCP 工具 {server.name}/{tool_name} 不可用")
+                elif versions.get(tool_name) != tool.schema_hash:
+                    issues.append(f"MCP 工具 {server.name}/{tool_name} Schema 已变化，请重新绑定并发布")
+        return issues
+
+    @staticmethod
+    def _snapshot_fields() -> tuple[str, ...]:
+        return (
+            "model_config", "dialog_round", "preset_prompt", "tools", "mcp_servers",
+            "workflows", "datasets", "retrieval_config", "long_term_memory",
+            "opening_statement", "opening_questions", "speech_to_text", "text_to_speech",
+            "suggested_after_answer", "review_config",
+        )
+
+    @classmethod
+    def _snapshot_draft_config(cls, draft: DraftAppConfig) -> dict:
+        return {field: getattr(draft, field) for field in cls._snapshot_fields()}
     def _get_draft_app_config(self, app_id: UUID) -> DraftAppConfig | None:
         return self.db.session.query(DraftAppConfig).filter(DraftAppConfig.app_id == app_id).one_or_none()
 
@@ -312,6 +631,7 @@ class AppService(BaseService):
             "dialog_round": 3,
             "preset_prompt": "",
             "tools": [],
+            "mcp_servers": [],
             "workflows": [],
             "datasets": [],
             "retrieval_config": DEFAULT_RETRIEVAL_CONFIG,

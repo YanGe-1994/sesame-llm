@@ -1,5 +1,11 @@
-venv
 .env
 data/debug_memory/
 storage
 cache
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+# uv 虚拟环境
+.venv/

@@ -339,6 +339,7 @@ class AppHandler:
                         "total_price": agent_queue_event.total_price,
                         "latency": agent_queue_event.latency,
                     }
+
                     if event == QueueEvent.AGENT_MESSAGE:
                         answer += agent_queue_event.thought or agent_queue_event.answer or ""
                     if agent_queue_event.latency:

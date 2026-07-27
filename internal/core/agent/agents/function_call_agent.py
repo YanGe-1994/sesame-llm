@@ -8,8 +8,6 @@
 from typing import Generator
 from uuid import UUID
 
-from langchain_core.messages import AnyMessage
-
 from internal.core.agent.agents.base_agent import BaseAgent
 from internal.core.agent.graph.builder import GraphBuilder
 from internal.core.agent.agents.agent_runtime import AgentRuntime
@@ -19,20 +17,10 @@ from internal.core.agent.entities.queue_entity import AgentQueueEvent
 class FunctionCallAgent(BaseAgent):
     """
     Function Call Agent
-
     职责：
-
         1. 初始化 Graph
         2. 初始化 Runtime
         3. 对外提供 run()
-
-    不负责：
-
-        - Prompt
-        - LLM
-        - Tool
-        - Memory
-        - Graph
     """
 
     def __init__(

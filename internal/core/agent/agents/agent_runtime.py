@@ -49,16 +49,11 @@ class AgentRuntime:
         """
         异步运行 Graph
         """
-
         invoke_target = self._invoke
-
         if has_request_context():
-
             invoke_target = copy_current_request_context(self._invoke)
 
-
         worker = threading.Thread(
-
             target=invoke_target,
             kwargs={
                 "query": query,
@@ -80,11 +75,8 @@ class AgentRuntime:
         """
         Graph 真正执行入口
         """
-
         try:
-
             self.graph.invoke(
-
                 {
                     "messages": [
                         HumanMessage(content=query)
@@ -99,11 +91,8 @@ class AgentRuntime:
             )
 
         except Exception as e:
-
             self.queue_manager.publish_error(e)
-
         finally:
-
             #
             # Graph 已结束
             #

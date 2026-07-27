@@ -32,6 +32,24 @@ class Config:
         self.SQLALCHEMY_ENGINE_OPTIONS = {
             "pool_size": int(_get_env("SQLALCHEMY_POOL_SIZE")),
             "pool_recycle": int(_get_env("SQLALCHEMY_POOL_RECYCLE")),
+             # 从连接池取连接前检测连接是否还活着
+            "pool_pre_ping": True,
+            # 连接池不足时允许额外创建的连接数
+            "max_overflow": 10,
+            # 获取连接最长等待时间
+            "pool_timeout": 30,
+            # 优先复用最近使用的连接
+            "pool_use_lifo": True,
+            "connect_args": {
+                # 建立新连接的超时时间
+                "connect_timeout": 10,
+                # TCP Keepalive
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+                "application_name": "sesame-llm-web",
+            },
         }
         self.SQLALCHEMY_ECHO = _get_bool_env("SQLALCHEMY_ECHO")
 

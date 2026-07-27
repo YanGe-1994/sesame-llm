@@ -5,7 +5,7 @@
 @Author : yange19940310@gmail.com
 @File   : llm_node.py
 """
-
+import json
 import time
 import uuid
 
@@ -70,7 +70,6 @@ class LLMNode:
                 gathered = chunk
             else:
                 gathered += chunk
-
             if chunk.tool_calls:
                 generation_type = "tool"
 
@@ -97,6 +96,7 @@ class LLMNode:
                     id=event_id,
                     task_id=self.queue_manager.task_id,
                     event=QueueEvent.AGENT_THOUGHT,
+                    thought=json.dumps(gathered.tool_calls),
                     messages=messages_to_dict(state["messages"]),
                     latency=time.perf_counter() - start_at,
                 )

@@ -62,7 +62,6 @@ class BuiltinToolService:
         tool_entity = provider.get_tool_entity(tool_name)
         if not tool_entity:
             raise NotFoundException(f"该工具{tool_name}不存在")
-        print('tool_entity',tool_entity.model_dump())
         # 3.组装提供商和工具实体信息
         provider_entity = provider.provider_entity
         tool = provider.get_tool(tool_name)
